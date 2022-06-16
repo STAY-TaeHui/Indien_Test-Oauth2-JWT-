@@ -1,0 +1,17 @@
+spring:
+  datasource:
+    url: 127.0.0.1:3
+    userNAME: sa
+    password: 1
+    driver-class-NAME: org.h2.Driver
+
+
+  jpa:
+    hibernate:
+      ddl-auto: update
+    properties:
+      hibernate:
+        #        show_sql: true
+        format_sql: true
+  profiles:
+    include: api
