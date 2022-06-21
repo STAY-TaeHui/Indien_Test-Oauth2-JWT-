@@ -2,11 +2,16 @@ package com.indien.indien_backend.oauth.service;
 
 import java.nio.charset.StandardCharsets;
 import java.util.Collections;
+import java.util.Map;
 
 import com.indien.indien_backend.controller.response.LoginResponse;
+import com.indien.indien_backend.controller.response.OAuthTokenResponse;
 import com.indien.indien_backend.jwt.TokenProvider;
+import com.indien.indien_backend.oauth.Oauth2UserInfo;
 import com.indien.indien_backend.repository.MemberRepository;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.MediaType;
 import org.springframework.security.core.userdetails.User;
 import org.springframework.security.oauth2.client.registration.ClientRegistration;
@@ -20,10 +25,12 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
+import org.springframework.util.StringUtils;
 import org.springframework.web.reactive.function.client.WebClient;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 @Transactional(readOnly = true)
 public class OAuthService implements OAuth2UserService<OAuth2UserRequest, OAuth2User>
 {
@@ -42,11 +49,36 @@ public class OAuthService implements OAuth2UserService<OAuth2UserRequest, OAuth2
     public LoginResponse login(String providerName, String code)
     {
         ClientRegistration provider = inMemoryRepository.findByRegistrationId(providerName);
-        OAuth2AccessTokenResponse tokenResponse = getToken(code,provider);
-//        getUserProfile(providerName,tokenResponse,provider);
+        OAuthTokenResponse tokenResponse = getToken(code,provider);
+        getUserProfile(providerName,tokenResponse,provider);
         return null;
     }
-    private OAuth2AccessTokenResponse getToken(String code, ClientRegistration provider){
+
+    private User getUserProfile(String providerName, OAuthTokenResponse tokenResponse, ClientRegistration provider)
+    {
+        Map<String,Object> userAttributes = getUserAttributes(provider,tokenResponse);
+        Oauth2UserInfo oauth2UserInfo = null;
+        if("kakao".equals(providerName)){
+            oauth2UserInfo = new KakaoUserInfo(userAttributes);
+        }
+        else{
+            log.info("허용되지 않은 접근입니다.");
+        }
+        return null;
+    }
+
+    private Map<String, Object> getUserAttributes(ClientRegistration provider, OAuthTokenResponse tokenResponse)
+    {
+        return WebClient.create()
+            .get()
+            .uri(provider.getProviderDetails().getUserInfoEndpoint().getUri())
+            .headers(header -> header.setBearerAuth(tokenResponse.getAccess_token()))
+            .retrieve()
+            .bodyToMono(new ParameterizedTypeReference<Map<String,Object>>(){})
+            .block();
+    }
+
+    private OAuthTokenResponse getToken(String code, ClientRegistration provider){
         return WebClient.create()
             .post()
             .uri(provider.getProviderDetails().getTokenUri())
@@ -56,7 +88,7 @@ public class OAuthService implements OAuth2UserService<OAuth2UserRequest, OAuth2
             })
             .bodyValue(tokenRequest(code,provider))
             .retrieve()
-            .bodyToMono(OAuth2AccessTokenResponse.class)
+            .bodyToMono(OAuthTokenResponse.class)
             .block();
     }
     private MultiValueMap<String,String> tokenRequest(String code, ClientRegistration provider){
